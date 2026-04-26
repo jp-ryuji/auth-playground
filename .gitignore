@@ -1,0 +1,22 @@
+# node
+node_modules/
+
+# pnpm
+.pnpm-store/
+
+# turbo
+.turbo/
+
+# next
+.next/
+
+# env
+.env
+.env.local
+
+# logs
+*.log
+
+# OS
+.DS_Store
+
