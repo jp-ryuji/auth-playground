@@ -34,6 +34,10 @@ Folders are numbered so file listings show the natural read order: architecture 
 | [glossary.md](./glossary.md) | Draft | Shared terms (OIDC, OAuth, Kratos- and Hydra-specific). |
 | [00-architecture/system-overview.md](./00-architecture/system-overview.md) | Draft | Component model, trust boundaries, the three-grant separation rule. |
 | [10-flows/signup-first-login.md](./10-flows/signup-first-login.md) | Draft | Authorization Code + PKCE through Hydra and Kratos to a signed-in RP session. |
+| [10-flows/returning-user-login.md](./10-flows/returning-user-login.md) | Draft | Delta against sign-up: product-session, Kratos-session, and remembered-consent short-circuits. |
+| [10-flows/m2m-client-credentials.md](./10-flows/m2m-client-credentials.md) | Draft | Outbound M2M grant with `private_key_jwt`, audience-scoped tokens, server-side cache. |
+| [10-flows/token-exchange-rfc8693.md](./10-flows/token-exchange-rfc8693.md) | Draft | On-behalf-of-user RFC 8693 exchange; server-held subject tokens, invalidate on session end. |
+| [30-cross-cutting/tokens-claims-audiences.md](./30-cross-cutting/tokens-claims-audiences.md) | Draft | Token taxonomy, audience/scope rules, server-sourced claims, RS validation order, lifetime defaults. |
 
 ## Spec template
 
