@@ -1,0 +1,69 @@
+# Hydra dev config for auth-playground.
+#
+# Supports the contract in docs/specs/10-flows/signup-first-login.md and
+# docs/specs/00-architecture/system-overview.md. Notable choices:
+#   - issuer URL = http://127.0.0.1:4444/  → apps/api discovers endpoints from
+#     {issuer}/.well-known/openid-configuration (OV-01, SIGNUP-01).
+#   - login/consent URLs point at apps/oauth-login on host port 3000.
+#   - Three OAuth clients (interactive, M2M, exchange) are registered out of band
+#     via Hydra Admin once the stack is up — see scripts/seed-clients.sh (TODO).
+
+serve:
+  cookies:
+    same_site_mode: Lax
+  admin:
+    cors:
+      enabled: true
+      allowed_origins:
+        - http://127.0.0.1:3000
+  public:
+    cors:
+      enabled: true
+      allowed_origins:
+        - http://127.0.0.1:3000
+        - http://127.0.0.1:3001
+        - http://127.0.0.1:8080
+
+urls:
+  self:
+    issuer: http://127.0.0.1:4444/
+    public: http://127.0.0.1:4444/
+  consent: http://127.0.0.1:3000/consent
+  login: http://127.0.0.1:3000/login
+  logout: http://127.0.0.1:3000/logout
+  error: http://127.0.0.1:3000/error
+  post_logout_redirect: http://127.0.0.1:3001/
+
+secrets:
+  # Dev-only. Rotate before any non-local deployment.
+  system:
+    - this-is-a-dev-only-secret-please-rotate
+  cookie:
+    - this-is-a-dev-only-cookie-secret-rotate
+
+oidc:
+  subject_identifiers:
+    supported_types:
+      - public
+  dynamic_client_registration:
+    enabled: false
+
+oauth2:
+  expose_internal_errors: true
+  pkce:
+    enforced: true          # SIGNUP-04: PKCE required for public + confidential
+    enforced_for_public_clients: true
+
+ttl:
+  access_token: 1h
+  refresh_token: 720h
+  id_token: 1h
+  auth_code: 10m
+
+log:
+  level: debug
+  format: json
+  leak_sensitive_values: true   # dev only
+
+strategies:
+  access_token: opaque

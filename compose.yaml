@@ -1,0 +1,102 @@
+# Local dev stack for auth-playground.
+#
+# Brings up the moving parts referenced by docs/specs/10-flows/signup-first-login.md:
+#   - ORY Hydra      (OP / AS)                       — public 4444, admin 4445
+#   - ORY Kratos     (identity)                      — public 4433, admin 4434
+#   - Kratos SSUI    (self-service reference UI)     — 4455
+#   - Postgres       (one container, two databases)  — 5432
+#   - Mailslurper    (catch verification mail)       — 4436 (web), 4437 (smtp)
+#
+# Application services (apps/api, apps/oauth-login, apps/web) run on the host
+# during development; they reach the stack via localhost:<port> URLs that match
+# what Hydra advertises in its discovery document (SIGNUP-01, OV-01).
+
+services:
+  postgresd:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ory
+      POSTGRES_PASSWORD: ory
+      POSTGRES_MULTIPLE_DATABASES: hydra,kratos
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker/postgres/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ory"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  hydra-migrate:
+    image: oryd/hydra:v2.2.0
+    environment:
+      DSN: postgres://ory:ory@postgresd:5432/hydra?sslmode=disable
+    command: migrate sql -e --yes
+    depends_on:
+      postgresd:
+        condition: service_healthy
+    restart: on-failure
+
+  hydra:
+    image: oryd/hydra:v2.2.0
+    depends_on:
+      hydra-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "4444:4444" # public  (authorize, token, jwks, .well-known)
+      - "4445:4445" # admin   (clients, login/consent accept)
+    environment:
+      DSN: postgres://ory:ory@postgresd:5432/hydra?sslmode=disable
+    command: serve all --dev --config /etc/config/hydra/hydra.yml
+    volumes:
+      - ./docker/hydra:/etc/config/hydra:ro
+
+  kratos-migrate:
+    image: oryd/kratos:v1.3.1
+    environment:
+      DSN: postgres://ory:ory@postgresd:5432/kratos?sslmode=disable
+    command: -c /etc/config/kratos/kratos.yml migrate sql -e --yes
+    depends_on:
+      postgresd:
+        condition: service_healthy
+    volumes:
+      - ./docker/kratos:/etc/config/kratos:ro
+    restart: on-failure
+
+  kratos:
+    image: oryd/kratos:v1.3.1
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "4433:4433" # public
+      - "4434:4434" # admin
+    environment:
+      DSN: postgres://ory:ory@postgresd:5432/kratos?sslmode=disable
+      LOG_LEVEL: info
+    command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
+    volumes:
+      - ./docker/kratos:/etc/config/kratos:ro
+
+  kratos-selfservice-ui:
+    image: oryd/kratos-selfservice-ui-node:v1.3.1
+    depends_on:
+      - kratos
+    ports:
+      - "4455:4455"
+    environment:
+      PORT: "4455"
+      SECURITY_MODE: ""
+      KRATOS_PUBLIC_URL: http://kratos:4433/
+      KRATOS_BROWSER_URL: http://127.0.0.1:4433/
+
+  mailslurper:
+    image: oryd/mailslurper:latest-smtps
+    ports:
+      - "4436:4436" # web UI
+      - "4437:4437" # smtp
+
+volumes:
+  postgres-data:
