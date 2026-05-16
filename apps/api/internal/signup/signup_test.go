@@ -380,9 +380,50 @@ func TestSignup_SIGNUP_02_StateIsRandomBoundSingleUse(t *testing.T) {
 }
 
 func TestSignup_SIGNUP_03_NonceBoundAndValidatedAtCallback(t *testing.T) {
-	pending(t, "SIGNUP-03",
-		"nonce MUST be cryptographically random, bound to the same record as state, "+
-			"and validated against the ID-token nonce claim at callback")
+	// Clause: cryptographically random, ≥128 bits.
+	nonce, err := signup.RandomURLSafe(16)
+	if err != nil {
+		t.Fatalf("RandomURLSafe: %v", err)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(nonce)
+	if err != nil {
+		t.Fatalf("DecodeString(%q): %v — nonce must be valid base64url", nonce, err)
+	}
+	if len(raw) < 16 {
+		t.Errorf("nonce encodes %d bytes, want ≥16 (128 bits)", len(raw))
+	}
+
+	// Clause: bound to the same record as state.
+	state, err := signup.RandomURLSafe(16)
+	if err != nil {
+		t.Fatalf("RandomURLSafe(state): %v", err)
+	}
+	pkce, err := signup.NewPKCE()
+	if err != nil {
+		t.Fatalf("NewPKCE: %v", err)
+	}
+	store := signup.NewStore(10 * time.Minute)
+	if err := store.Save(state, signup.AuthState{State: state, Nonce: nonce, Verifier: pkce.Verifier}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := store.Consume(state)
+	if err != nil {
+		t.Fatalf("Consume: %v", err)
+	}
+	if got.Nonce != nonce {
+		t.Errorf("AuthState.Nonce = %q, want %q (must be bound to same record as state)", got.Nonce, nonce)
+	}
+
+	// Clause: validated against the ID-token nonce claim at callback.
+	if err := signup.ValidateNonce(got.Nonce, nonce); err != nil {
+		t.Errorf("ValidateNonce(match): unexpected error: %v", err)
+	}
+	if err := signup.ValidateNonce(got.Nonce, "wrong-nonce"); err == nil {
+		t.Error("ValidateNonce(mismatch): expected error, got nil")
+	}
+	if err := signup.ValidateNonce(got.Nonce, ""); err == nil {
+		t.Error("ValidateNonce(empty fromIDToken): expected error, got nil")
+	}
 }
 
 func TestSignup_SIGNUP_04_PKCEVerifierStaysOnBFF(t *testing.T) {

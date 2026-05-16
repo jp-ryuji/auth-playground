@@ -2,6 +2,7 @@ package signup
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -22,4 +23,20 @@ func RandomURLSafe(n int) (string, error) {
 		return "", fmt.Errorf("signup: read random: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+// ValidateNonce compares the nonce stored at authorize time against the value
+// extracted from the ID token's nonce claim. Returns nil only when both are
+// non-empty and equal. Uses constant-time comparison to prevent timing oracles.
+func ValidateNonce(stored, fromIDToken string) error {
+	if stored == "" {
+		return errors.New("signup: stored nonce is empty")
+	}
+	if fromIDToken == "" {
+		return errors.New("signup: ID-token nonce claim is absent or empty")
+	}
+	if subtle.ConstantTimeCompare([]byte(stored), []byte(fromIDToken)) != 1 {
+		return errors.New("signup: nonce mismatch")
+	}
+	return nil
 }
