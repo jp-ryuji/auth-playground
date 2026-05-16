@@ -15,6 +15,7 @@ package signup_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -317,8 +318,65 @@ func TestSignup_SIGNUP_01_LiveDiscovery(t *testing.T) {
 }
 
 func TestSignup_SIGNUP_02_StateIsRandomBoundSingleUse(t *testing.T) {
-	pending(t, "SIGNUP-02",
-		"state MUST be cryptographically random (≥128 bits), bound server-side to the browser, and single-use")
+	// Clause: cryptographically random, ≥128 bits of entropy.
+	state, err := signup.RandomURLSafe(16) // 16 bytes = 128 bits
+	if err != nil {
+		t.Fatalf("RandomURLSafe: %v", err)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(state)
+	if err != nil {
+		t.Fatalf("DecodeString(%q): %v", state, err)
+	}
+	if len(raw) < 16 {
+		t.Errorf("state encodes %d bytes, want ≥16 (128 bits)", len(raw))
+	}
+
+	nonce, err := signup.RandomURLSafe(16)
+	if err != nil {
+		t.Fatalf("RandomURLSafe(nonce): %v", err)
+	}
+	pkce, err := signup.NewPKCE()
+	if err != nil {
+		t.Fatalf("NewPKCE: %v", err)
+	}
+
+	// Clause: bound to a short-lived server-side record.
+	store := signup.NewStore(10 * time.Minute)
+	if err := store.Save(state, signup.AuthState{State: state, Nonce: nonce, Verifier: pkce.Verifier}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := store.Consume(state)
+	if err != nil {
+		t.Fatalf("Consume: %v", err)
+	}
+	if got.State != state {
+		t.Errorf("AuthState.State = %q, want %q", got.State, state)
+	}
+	if got.Nonce != nonce {
+		t.Errorf("AuthState.Nonce = %q, want %q", got.Nonce, nonce)
+	}
+	if got.Verifier != pkce.Verifier {
+		t.Errorf("AuthState.Verifier = %q, want %q", got.Verifier, pkce.Verifier)
+	}
+
+	// Clause: single-use — second Consume on the same key must fail.
+	if _, err := store.Consume(state); err == nil {
+		t.Fatal("second Consume succeeded; want error (single-use)")
+	}
+
+	// Unknown key must fail.
+	if _, err := store.Consume("unknown-key"); err == nil {
+		t.Fatal("Consume with unknown key succeeded; want error")
+	}
+
+	// Clause: short-lived — expired record must be rejected.
+	state2, _ := signup.RandomURLSafe(16)
+	shortStore := signup.NewStore(time.Millisecond)
+	_ = shortStore.Save(state2, signup.AuthState{State: state2})
+	time.Sleep(5 * time.Millisecond)
+	if _, err := shortStore.Consume(state2); err == nil {
+		t.Fatal("Consume on expired record succeeded; want error")
+	}
 }
 
 func TestSignup_SIGNUP_03_NonceBoundAndValidatedAtCallback(t *testing.T) {
