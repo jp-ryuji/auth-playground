@@ -59,6 +59,7 @@ func lower(s string) string {
 // discovery's authorization_endpoint and the query contains every
 // required parameter, including the S256 code_challenge_method.
 func TestSignup_SIGNUP_01_AuthorizeURLBuiltFromDiscovery(t *testing.T) {
+	t.Parallel()
 	const (
 		fakeAuthorizeEndpoint = "https://issuer.example/oauth2/auth"
 		clientID              = "test-rp"
@@ -192,6 +193,8 @@ func TestSignup_SIGNUP_01_AuthorizeURLBuiltFromDiscovery(t *testing.T) {
 // operational fields are required. Co-located with the positive test
 // because they share the same requirement and fixture surface.
 func TestSignup_SIGNUP_01_BuildAuthorizeURL_Invalid(t *testing.T) {
+	t.Parallel()
+
 	good := signup.AuthorizeParams{
 		ClientID:      "test-rp",
 		RedirectURI:   "http://127.0.0.1:8080/auth/callback",
@@ -202,23 +205,23 @@ func TestSignup_SIGNUP_01_BuildAuthorizeURL_Invalid(t *testing.T) {
 	}
 	goodDoc := &oidc.Document{AuthorizationEndpoint: "https://issuer.example/oauth2/auth"}
 
-	cases := []struct {
-		name string
-		doc  *oidc.Document
-		mut  func(*signup.AuthorizeParams)
+	cases := map[string]struct {
+		doc *oidc.Document
+		mut func(*signup.AuthorizeParams)
 	}{
-		{"nil doc", nil, func(*signup.AuthorizeParams) {}},
-		{"empty authorization_endpoint", &oidc.Document{}, func(*signup.AuthorizeParams) {}},
-		{"missing client_id", goodDoc, func(p *signup.AuthorizeParams) { p.ClientID = "" }},
-		{"missing redirect_uri", goodDoc, func(p *signup.AuthorizeParams) { p.RedirectURI = "" }},
-		{"nil scopes", goodDoc, func(p *signup.AuthorizeParams) { p.Scopes = nil }},
-		{"scopes without openid", goodDoc, func(p *signup.AuthorizeParams) { p.Scopes = []string{"profile"} }},
-		{"missing state", goodDoc, func(p *signup.AuthorizeParams) { p.State = "" }},
-		{"missing nonce", goodDoc, func(p *signup.AuthorizeParams) { p.Nonce = "" }},
-		{"missing code_challenge", goodDoc, func(p *signup.AuthorizeParams) { p.CodeChallenge = "" }},
+		"nil doc":                       {nil, func(*signup.AuthorizeParams) {}},
+		"empty authorization_endpoint":  {&oidc.Document{}, func(*signup.AuthorizeParams) {}},
+		"missing client_id":             {goodDoc, func(p *signup.AuthorizeParams) { p.ClientID = "" }},
+		"missing redirect_uri":          {goodDoc, func(p *signup.AuthorizeParams) { p.RedirectURI = "" }},
+		"nil scopes":                    {goodDoc, func(p *signup.AuthorizeParams) { p.Scopes = nil }},
+		"scopes without openid":         {goodDoc, func(p *signup.AuthorizeParams) { p.Scopes = []string{"profile"} }},
+		"missing state":                 {goodDoc, func(p *signup.AuthorizeParams) { p.State = "" }},
+		"missing nonce":                 {goodDoc, func(p *signup.AuthorizeParams) { p.Nonce = "" }},
+		"missing code_challenge":        {goodDoc, func(p *signup.AuthorizeParams) { p.CodeChallenge = "" }},
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			p := good
 			c.mut(&p)
 			if _, err := signup.BuildAuthorizeURL(c.doc, p); err == nil {
@@ -381,6 +384,7 @@ func TestSignup_SIGNUP_02_StateIsRandomBoundSingleUse(t *testing.T) {
 }
 
 func TestSignup_SIGNUP_03_NonceBoundAndValidatedAtCallback(t *testing.T) {
+	t.Parallel()
 	// Clause: cryptographically random, ≥128 bits.
 	nonce, err := signup.RandomURLSafe(16)
 	if err != nil {
@@ -428,6 +432,7 @@ func TestSignup_SIGNUP_03_NonceBoundAndValidatedAtCallback(t *testing.T) {
 }
 
 func TestSignup_SIGNUP_04_PKCEVerifierStaysOnBFF(t *testing.T) {
+	t.Parallel()
 	const (
 		fakeAuthorizeEndpoint = "https://issuer.example/oauth2/auth"
 		clientID              = "test-rp"
