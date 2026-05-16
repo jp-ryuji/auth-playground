@@ -1,4 +1,4 @@
-// Package discovery is a minimal OIDC discovery client for apps/api.
+// Package oidc is a minimal OIDC discovery client for apps/api.
 //
 // Contract: docs/specs/00-architecture/system-overview.md (OV-01, OV-02, OV-03).
 // First consumer: docs/specs/10-flows/signup-first-login.md (SIGNUP-01).
@@ -6,7 +6,7 @@
 // Scope of this iteration: fetch the discovery document and expose the
 // fields SIGNUP-01..14 will read. No caching, no JWKS rotation — those
 // land with `30-cross-cutting/discovery-and-jwks.md` (TODO).
-package discovery
+package oidc
 
 import (
 	"context"
@@ -51,33 +51,33 @@ func NewClient(issuerURL string, httpClient *http.Client) *Client {
 // SIGNUP-01 directly depends on).
 func (c *Client) Fetch(ctx context.Context) (*Document, error) {
 	if strings.TrimSpace(c.issuerURL) == "" {
-		return nil, errors.New("discovery: issuer URL is empty")
+		return nil, errors.New("oidc: issuer URL is empty")
 	}
 	url := strings.TrimSuffix(c.issuerURL, "/") + "/.well-known/openid-configuration"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("discovery: build request: %w", err)
+		return nil, fmt.Errorf("oidc: build request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("discovery: GET %s: %w", url, err)
+		return nil, fmt.Errorf("oidc: GET %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<10))
-		return nil, fmt.Errorf("discovery: GET %s: status %d: %s", url, resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("oidc: GET %s: status %d: %s", url, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	var doc Document
 	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
-		return nil, fmt.Errorf("discovery: decode %s: %w", url, err)
+		return nil, fmt.Errorf("oidc: decode %s: %w", url, err)
 	}
 	if doc.AuthorizationEndpoint == "" {
-		return nil, fmt.Errorf("discovery: %s missing authorization_endpoint", url)
+		return nil, fmt.Errorf("oidc: %s missing authorization_endpoint", url)
 	}
 	return &doc, nil
 }

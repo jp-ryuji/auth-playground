@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jp-ryuji/auth-playground/apps/api/internal/discovery"
+	"github.com/jp-ryuji/auth-playground/apps/api/internal/oidc"
 	"github.com/jp-ryuji/auth-playground/apps/api/internal/signup"
 )
 
@@ -87,9 +87,9 @@ func TestSignup_SIGNUP_01_AuthorizeURLBuiltFromDiscovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
 
-	doc, err := discovery.NewClient(ts.URL, ts.Client()).Fetch(ctx)
+	doc, err := oidc.NewClient(ts.URL, ts.Client()).Fetch(ctx)
 	if err != nil {
-		t.Fatalf("discovery.Fetch: %v", err)
+		t.Fatalf("oidc.Fetch: %v", err)
 	}
 	if got, want := doc.AuthorizationEndpoint, fakeAuthorizeEndpoint; got != want {
 		t.Fatalf("doc.AuthorizationEndpoint = %q, want %q", got, want)
@@ -200,15 +200,15 @@ func TestSignup_SIGNUP_01_BuildAuthorizeURL_Invalid(t *testing.T) {
 		Nonce:         "n",
 		CodeChallenge: "c",
 	}
-	goodDoc := &discovery.Document{AuthorizationEndpoint: "https://issuer.example/oauth2/auth"}
+	goodDoc := &oidc.Document{AuthorizationEndpoint: "https://issuer.example/oauth2/auth"}
 
 	cases := []struct {
 		name string
-		doc  *discovery.Document
+		doc  *oidc.Document
 		mut  func(*signup.AuthorizeParams)
 	}{
 		{"nil doc", nil, func(*signup.AuthorizeParams) {}},
-		{"empty authorization_endpoint", &discovery.Document{}, func(*signup.AuthorizeParams) {}},
+		{"empty authorization_endpoint", &oidc.Document{}, func(*signup.AuthorizeParams) {}},
 		{"missing client_id", goodDoc, func(p *signup.AuthorizeParams) { p.ClientID = "" }},
 		{"missing redirect_uri", goodDoc, func(p *signup.AuthorizeParams) { p.RedirectURI = "" }},
 		{"nil scopes", goodDoc, func(p *signup.AuthorizeParams) { p.Scopes = nil }},
@@ -249,9 +249,9 @@ func TestSignup_SIGNUP_01_LiveDiscovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
 
-	doc, err := discovery.NewClient(issuer, http.DefaultClient).Fetch(ctx)
+	doc, err := oidc.NewClient(issuer, http.DefaultClient).Fetch(ctx)
 	if err != nil {
-		t.Fatalf("discovery.Fetch(%s): %v (is `make up` running?)", issuer, err)
+		t.Fatalf("oidc.Fetch(%s): %v (is `make up` running?)", issuer, err)
 	}
 	if doc.AuthorizationEndpoint == "" {
 		t.Fatalf("live discovery returned empty authorization_endpoint")
@@ -453,9 +453,9 @@ func TestSignup_SIGNUP_04_PKCEVerifierStaysOnBFF(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
 
-	doc, err := discovery.NewClient(ts.URL, ts.Client()).Fetch(ctx)
+	doc, err := oidc.NewClient(ts.URL, ts.Client()).Fetch(ctx)
 	if err != nil {
-		t.Fatalf("discovery.Fetch: %v", err)
+		t.Fatalf("oidc.Fetch: %v", err)
 	}
 
 	store := signup.NewStore(10 * time.Minute)

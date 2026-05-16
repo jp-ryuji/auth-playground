@@ -7,12 +7,12 @@ import (
 	"net/http"
 
 	"github.com/jp-ryuji/auth-playground/apps/api/internal/config"
-	"github.com/jp-ryuji/auth-playground/apps/api/internal/discovery"
+	"github.com/jp-ryuji/auth-playground/apps/api/internal/oidc"
 	"github.com/jp-ryuji/auth-playground/apps/api/internal/signup"
 )
 
 type Deps struct {
-	Doc   *discovery.Document
+	Doc   *oidc.Document
 	Store *signup.Store
 	Cfg   config.Config
 }

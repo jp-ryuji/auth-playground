@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/jp-ryuji/auth-playground/apps/api/internal/config"
-	"github.com/jp-ryuji/auth-playground/apps/api/internal/discovery"
+	"github.com/jp-ryuji/auth-playground/apps/api/internal/oidc"
 	"github.com/jp-ryuji/auth-playground/apps/api/internal/server"
 	"github.com/jp-ryuji/auth-playground/apps/api/internal/signup"
 )
@@ -20,9 +20,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.DiscoveryTimeout)
 	defer cancel()
 
-	doc, err := discovery.NewClient(cfg.HydraIssuer, http.DefaultClient).Fetch(ctx)
+	doc, err := oidc.NewClient(cfg.HydraIssuer, http.DefaultClient).Fetch(ctx)
 	if err != nil {
-		log.Fatalf("discovery: %v", err)
+		log.Fatalf("oidc: %v", err)
 	}
 
 	store := signup.NewStore(cfg.AuthStateTTL)

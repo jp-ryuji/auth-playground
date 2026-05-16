@@ -3,7 +3,7 @@ package signup
 import (
 	"net/http"
 
-	"github.com/jp-ryuji/auth-playground/apps/api/internal/discovery"
+	"github.com/jp-ryuji/auth-playground/apps/api/internal/oidc"
 )
 
 const authStateCookieName = "auth_state"
@@ -15,7 +15,7 @@ const authStateCookieName = "auth_state"
 // Only the S256 challenge leaves apps/api — the verifier stays in Store
 // (SIGNUP-04). Doc, Store, ClientID, RedirectURI, and Scopes must all be set.
 type LoginHandler struct {
-	Doc          *discovery.Document
+	Doc          *oidc.Document
 	Store        *Store
 	ClientID     string
 	RedirectURI  string
