@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jp-ryuji/oidc-portfolio-api/internal/discovery"
+	"github.com/jp-ryuji/auth-playground/apps/api/internal/discovery"
 )
 
 // codeChallengeMethodS256 is the only PKCE transform SIGNUP-01 permits.

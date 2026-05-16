@@ -25,8 +25,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jp-ryuji/oidc-portfolio-api/internal/discovery"
-	"github.com/jp-ryuji/oidc-portfolio-api/internal/signup"
+	"github.com/jp-ryuji/auth-playground/apps/api/internal/discovery"
+	"github.com/jp-ryuji/auth-playground/apps/api/internal/signup"
 )
 
 const specHref = "docs/specs/10-flows/signup-first-login.md"
