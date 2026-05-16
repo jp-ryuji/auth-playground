@@ -5,7 +5,7 @@
 #   - ORY Kratos     (identity)                      — public 4433, admin 4434
 #   - Kratos SSUI    (self-service reference UI)     — 4455
 #   - Postgres       (one container, two databases)  — 5432
-#   - Mailslurper    (catch verification mail)       — 4436 (web), 4437 (smtp)
+#   - Mailpit        (catch verification mail)       — 8025 (web)
 #
 # Application services (apps/api, apps/oauth-login, apps/web) run on the host
 # during development; they reach the stack via localhost:<port> URLs that match
@@ -91,12 +91,23 @@ services:
       SECURITY_MODE: ""
       KRATOS_PUBLIC_URL: http://kratos:4433/
       KRATOS_BROWSER_URL: http://127.0.0.1:4433/
+      # v1.3.1 requires CSRF + cookie secrets; dev-only values below.
+      COOKIE_SECRET: dev-only-ssui-cookie-secret
+      CSRF_COOKIE_NAME: kratos-ssui-csrf
+      CSRF_COOKIE_SECRET: dev-only-ssui-csrf-secret
 
-  mailslurper:
-    image: oryd/mailslurper:latest-smtps
+  mailpit:
+    # Dev mail catcher. Multi-arch (amd64 + arm64), actively maintained;
+    # replaces oryd/mailslurper which is amd64-only.
+    image: axllent/mailpit:latest
+    restart: unless-stopped
     ports:
-      - "4436:4436" # web UI
-      - "4437:4437" # smtp
+      - "8025:8025" # web UI       → http://127.0.0.1:8025
+      # 1025 SMTP stays internal; Kratos reaches it via the docker network.
+    environment:
+      MP_MAX_MESSAGES: "5000"
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
 
 volumes:
   postgres-data:

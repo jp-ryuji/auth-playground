@@ -99,4 +99,6 @@ identity:
 
 courier:
   smtp:
-    connection_uri: smtps://test:test@mailslurper:1025/?skip_ssl_verify=true
+    # Plain SMTP into mailpit; no TLS, no auth required in dev.
+    # Web UI to read mail: http://127.0.0.1:8025
+    connection_uri: smtp://mailpit:1025/?disable_starttls=true
