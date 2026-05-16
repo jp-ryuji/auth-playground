@@ -15,6 +15,16 @@ This README describes the **intended architecture and behavior** as the reposito
 - RBAC / ABAC / ReBAC
 - Token lifecycle
 
+## Local development
+
+```bash
+make up        # start the OIDC stack (Hydra, Kratos, Postgres, SSUI, Mailslurper)
+make test      # run the SIGNUP-NN suite in apps/api
+make help      # everything else
+```
+
+`make` with no target prints the same listing. See [`docs/specs/`](./docs/specs) for the design contract the code is expected to satisfy.
+
 ## Architecture
 
 ### Monorepo
@@ -153,12 +163,17 @@ sequenceDiagram
 
 ```text
 apps/
-  web/           # Next.js: main thin client
+  web/           # Next.js: thin client (planned)
   api/           # Go: RP + BFF + RS; RFC 8693 token exchange
-  oauth-login/   # Go: Hydra login/consent orchestration
-config/
+  oauth-login/   # Go: Hydra login/consent orchestration (planned)
+docker/
+  hydra/         # Hydra config
   kratos/        # Kratos config, identity schema, courier templates
-infra/           # e.g. docker-compose: Postgres, Hydra, Kratos, Self-Service UI, apps
+  postgres/      # Postgres init script
+docs/
+  specs/         # Design contract: architecture, flows, cross-cutting
+compose.yaml     # Local stack: Postgres, Hydra, Kratos, Self-Service UI, Mailslurper
+Makefile         # Developer entry points (make help)
 ```
 
 ### Services
