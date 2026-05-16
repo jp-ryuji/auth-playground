@@ -1,0 +1,104 @@
+# Kratos dev config for auth-playground.
+#
+# Identity tier referenced by OV-10/OV-11/OV-12. Self-service flows hand control
+# back to apps/oauth-login after a Kratos session is established (SIGNUP-06,
+# SIGNUP-07).
+
+version: v1.3.1
+
+dsn: memory  # overridden by env DSN in docker-compose
+
+serve:
+  public:
+    base_url: http://127.0.0.1:4433/
+    cors:
+      enabled: true
+      allowed_origins:
+        - http://127.0.0.1:4455
+        - http://127.0.0.1:3000
+        - http://127.0.0.1:3001
+      allowed_methods:
+        - POST
+        - GET
+        - PUT
+        - PATCH
+        - DELETE
+      allowed_headers:
+        - Authorization
+        - Cookie
+        - Content-Type
+      exposed_headers:
+        - Content-Type
+        - Set-Cookie
+  admin:
+    base_url: http://kratos:4434/
+
+selfservice:
+  default_browser_return_url: http://127.0.0.1:4455/
+  allowed_return_urls:
+    - http://127.0.0.1:4455
+    - http://127.0.0.1:3000
+    - http://127.0.0.1:3001
+
+  methods:
+    password:
+      enabled: true
+
+  flows:
+    error:
+      ui_url: http://127.0.0.1:4455/error
+    settings:
+      ui_url: http://127.0.0.1:4455/settings
+      privileged_session_max_age: 15m
+    recovery:
+      enabled: true
+      ui_url: http://127.0.0.1:4455/recovery
+    verification:
+      enabled: true
+      ui_url: http://127.0.0.1:4455/verification
+      after:
+        default_browser_return_url: http://127.0.0.1:4455/
+    logout:
+      after:
+        default_browser_return_url: http://127.0.0.1:4455/login
+    login:
+      ui_url: http://127.0.0.1:4455/login
+      lifespan: 10m
+    registration:
+      lifespan: 10m
+      ui_url: http://127.0.0.1:4455/registration
+      after:
+        password:
+          hooks:
+            - hook: session   # auto-login on registration → Kratos session ready
+
+log:
+  level: info
+  format: text
+  leak_sensitive_values: true   # dev only
+
+secrets:
+  cookie:
+    - this-is-a-dev-only-kratos-cookie-secret
+  cipher:
+    - 32-LONG-SECRET-NOT-SECURE-AT-ALL
+
+ciphers:
+  algorithm: xchacha20-poly1305
+
+hashers:
+  algorithm: bcrypt
+  bcrypt:
+    cost: 8       # low cost for dev speed; raise for prod
+
+identity:
+  default_schema_id: default
+  schemas:
+    - id: default
+      url: file:///etc/config/kratos/identity.schema.json
+
+courier:
+  smtp:
+    # Plain SMTP into mailpit; no TLS, no auth required in dev.
+    # Web UI to read mail: http://127.0.0.1:8025
+    connection_uri: smtp://mailpit:1025/?disable_starttls=true
