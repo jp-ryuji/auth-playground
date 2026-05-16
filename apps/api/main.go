@@ -2,39 +2,48 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
+	"os/signal"
+	"syscall"
 	"time"
 
+	"github.com/jp-ryuji/auth-playground/apps/api/internal/config"
 	"github.com/jp-ryuji/auth-playground/apps/api/internal/discovery"
+	"github.com/jp-ryuji/auth-playground/apps/api/internal/server"
 	"github.com/jp-ryuji/auth-playground/apps/api/internal/signup"
 )
 
-const hydraIssuer = "http://127.0.0.1:4444/"
-
 func main() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	cfg := config.Load()
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.DiscoveryTimeout)
 	defer cancel()
 
-	doc, err := discovery.NewClient(hydraIssuer, http.DefaultClient).Fetch(ctx)
+	doc, err := discovery.NewClient(cfg.HydraIssuer, http.DefaultClient).Fetch(ctx)
 	if err != nil {
 		log.Fatalf("discovery: %v", err)
 	}
 
-	store := signup.NewStore(10 * time.Minute)
+	store := signup.NewStore(cfg.AuthStateTTL)
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "ok")
-	})
-	http.Handle("GET /auth/login", &signup.LoginHandler{
-		Doc:         doc,
-		Store:       store,
-		ClientID:    "auth-playground-rp",
-		RedirectURI: "http://127.0.0.1:8080/auth/callback",
-		Scopes:      []string{"openid", "offline"},
-	})
+	srv := server.New(server.Deps{Doc: doc, Store: store, Cfg: cfg})
+	errCh := srv.Start()
+	log.Printf("server listening on :%s", cfg.Port)
 
-	fmt.Println("server started at :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
+	select {
+	case err := <-errCh:
+		log.Fatalf("server error: %v", err)
+	case <-sigCtx.Done():
+		log.Println("shutdown signal received")
+	}
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("shutdown: %v", err)
+	}
 }
