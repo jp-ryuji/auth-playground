@@ -15,6 +15,7 @@ package signup_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -26,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jp-ryuji/auth-playground/apps/api/internal/discovery"
+	"github.com/jp-ryuji/auth-playground/apps/api/internal/oidc"
 	"github.com/jp-ryuji/auth-playground/apps/api/internal/signup"
 )
 
@@ -58,6 +59,7 @@ func lower(s string) string {
 // discovery's authorization_endpoint and the query contains every
 // required parameter, including the S256 code_challenge_method.
 func TestSignup_SIGNUP_01_AuthorizeURLBuiltFromDiscovery(t *testing.T) {
+	t.Parallel()
 	const (
 		fakeAuthorizeEndpoint = "https://issuer.example/oauth2/auth"
 		clientID              = "test-rp"
@@ -86,9 +88,9 @@ func TestSignup_SIGNUP_01_AuthorizeURLBuiltFromDiscovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
 
-	doc, err := discovery.NewClient(ts.URL, ts.Client()).Fetch(ctx)
+	doc, err := oidc.NewClient(ts.URL, ts.Client()).Fetch(ctx)
 	if err != nil {
-		t.Fatalf("discovery.Fetch: %v", err)
+		t.Fatalf("oidc.Fetch: %v", err)
 	}
 	if got, want := doc.AuthorizationEndpoint, fakeAuthorizeEndpoint; got != want {
 		t.Fatalf("doc.AuthorizationEndpoint = %q, want %q", got, want)
@@ -191,6 +193,8 @@ func TestSignup_SIGNUP_01_AuthorizeURLBuiltFromDiscovery(t *testing.T) {
 // operational fields are required. Co-located with the positive test
 // because they share the same requirement and fixture surface.
 func TestSignup_SIGNUP_01_BuildAuthorizeURL_Invalid(t *testing.T) {
+	t.Parallel()
+
 	good := signup.AuthorizeParams{
 		ClientID:      "test-rp",
 		RedirectURI:   "http://127.0.0.1:8080/auth/callback",
@@ -199,25 +203,25 @@ func TestSignup_SIGNUP_01_BuildAuthorizeURL_Invalid(t *testing.T) {
 		Nonce:         "n",
 		CodeChallenge: "c",
 	}
-	goodDoc := &discovery.Document{AuthorizationEndpoint: "https://issuer.example/oauth2/auth"}
+	goodDoc := &oidc.Document{AuthorizationEndpoint: "https://issuer.example/oauth2/auth"}
 
-	cases := []struct {
-		name string
-		doc  *discovery.Document
-		mut  func(*signup.AuthorizeParams)
+	cases := map[string]struct {
+		doc *oidc.Document
+		mut func(*signup.AuthorizeParams)
 	}{
-		{"nil doc", nil, func(*signup.AuthorizeParams) {}},
-		{"empty authorization_endpoint", &discovery.Document{}, func(*signup.AuthorizeParams) {}},
-		{"missing client_id", goodDoc, func(p *signup.AuthorizeParams) { p.ClientID = "" }},
-		{"missing redirect_uri", goodDoc, func(p *signup.AuthorizeParams) { p.RedirectURI = "" }},
-		{"nil scopes", goodDoc, func(p *signup.AuthorizeParams) { p.Scopes = nil }},
-		{"scopes without openid", goodDoc, func(p *signup.AuthorizeParams) { p.Scopes = []string{"profile"} }},
-		{"missing state", goodDoc, func(p *signup.AuthorizeParams) { p.State = "" }},
-		{"missing nonce", goodDoc, func(p *signup.AuthorizeParams) { p.Nonce = "" }},
-		{"missing code_challenge", goodDoc, func(p *signup.AuthorizeParams) { p.CodeChallenge = "" }},
+		"nil doc":                       {nil, func(*signup.AuthorizeParams) {}},
+		"empty authorization_endpoint":  {&oidc.Document{}, func(*signup.AuthorizeParams) {}},
+		"missing client_id":             {goodDoc, func(p *signup.AuthorizeParams) { p.ClientID = "" }},
+		"missing redirect_uri":          {goodDoc, func(p *signup.AuthorizeParams) { p.RedirectURI = "" }},
+		"nil scopes":                    {goodDoc, func(p *signup.AuthorizeParams) { p.Scopes = nil }},
+		"scopes without openid":         {goodDoc, func(p *signup.AuthorizeParams) { p.Scopes = []string{"profile"} }},
+		"missing state":                 {goodDoc, func(p *signup.AuthorizeParams) { p.State = "" }},
+		"missing nonce":                 {goodDoc, func(p *signup.AuthorizeParams) { p.Nonce = "" }},
+		"missing code_challenge":        {goodDoc, func(p *signup.AuthorizeParams) { p.CodeChallenge = "" }},
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			p := good
 			c.mut(&p)
 			if _, err := signup.BuildAuthorizeURL(c.doc, p); err == nil {
@@ -248,9 +252,9 @@ func TestSignup_SIGNUP_01_LiveDiscovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
 
-	doc, err := discovery.NewClient(issuer, http.DefaultClient).Fetch(ctx)
+	doc, err := oidc.NewClient(issuer, http.DefaultClient).Fetch(ctx)
 	if err != nil {
-		t.Fatalf("discovery.Fetch(%s): %v (is `make up` running?)", issuer, err)
+		t.Fatalf("oidc.Fetch(%s): %v (is `make up` running?)", issuer, err)
 	}
 	if doc.AuthorizationEndpoint == "" {
 		t.Fatalf("live discovery returned empty authorization_endpoint")
@@ -380,6 +384,7 @@ func TestSignup_SIGNUP_02_StateIsRandomBoundSingleUse(t *testing.T) {
 }
 
 func TestSignup_SIGNUP_03_NonceBoundAndValidatedAtCallback(t *testing.T) {
+	t.Parallel()
 	// Clause: cryptographically random, ≥128 bits.
 	nonce, err := signup.RandomURLSafe(16)
 	if err != nil {
@@ -427,8 +432,141 @@ func TestSignup_SIGNUP_03_NonceBoundAndValidatedAtCallback(t *testing.T) {
 }
 
 func TestSignup_SIGNUP_04_PKCEVerifierStaysOnBFF(t *testing.T) {
-	pending(t, "SIGNUP-04",
-		"PKCE code_verifier MUST be per-request, stored only server-side on apps/api, MUST NOT leave the BFF")
+	t.Parallel()
+	const (
+		fakeAuthorizeEndpoint = "https://issuer.example/oauth2/auth"
+		clientID              = "test-rp"
+		redirectURI           = "http://127.0.0.1:8080/auth/callback"
+	)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/openid-configuration" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer":                           r.Host,
+			"authorization_endpoint":           fakeAuthorizeEndpoint,
+			"token_endpoint":                   "https://issuer.example/oauth2/token",
+			"jwks_uri":                         "https://issuer.example/.well-known/jwks.json",
+			"code_challenge_methods_supported": []string{"S256"},
+		})
+	}))
+	t.Cleanup(ts.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	doc, err := oidc.NewClient(ts.URL, ts.Client()).Fetch(ctx)
+	if err != nil {
+		t.Fatalf("oidc.Fetch: %v", err)
+	}
+
+	store := signup.NewStore(10 * time.Minute)
+	handler := &signup.LoginHandler{
+		Doc:         doc,
+		Store:       store,
+		ClientID:    clientID,
+		RedirectURI: redirectURI,
+		Scopes:      []string{"openid", "offline"},
+	}
+
+	doRequest := func(t *testing.T) (loc, state string, cookie *http.Cookie) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		// Clause: 302 redirect.
+		if rec.Code != http.StatusFound {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusFound)
+		}
+
+		loc = rec.Header().Get("Location")
+		u, err := url.Parse(loc)
+		if err != nil {
+			t.Fatalf("url.Parse(Location %q): %v", loc, err)
+		}
+		state = u.Query().Get("state")
+
+		for _, c := range rec.Result().Cookies() {
+			if c.Name == "auth_state" {
+				cookie = c
+				break
+			}
+		}
+		return loc, state, cookie
+	}
+
+	// --- First request -------------------------------------------------------
+
+	loc1, state1, cookie1 := doRequest(t)
+
+	u1, _ := url.Parse(loc1)
+	q1 := u1.Query()
+
+	// Clause: challenge is on the wire.
+	challenge1 := q1.Get("code_challenge")
+	if challenge1 == "" {
+		t.Fatal("code_challenge missing from redirect URL")
+	}
+
+	// Clause: code_verifier key is absent from the redirect URL.
+	if q1.Get("code_verifier") != "" {
+		t.Error("code_verifier key found in redirect URL; MUST NOT leave BFF")
+	}
+
+	// Retrieve the server-side record to inspect the verifier.
+	authState1, err := store.Consume(state1)
+	if err != nil {
+		t.Fatalf("store.Consume: %v", err)
+	}
+
+	// Clause: challenge matches S256(verifier).
+	sum := sha256.Sum256([]byte(authState1.Verifier))
+	expectedChallenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	if challenge1 != expectedChallenge {
+		t.Errorf("code_challenge = %q, want S256(verifier) = %q", challenge1, expectedChallenge)
+	}
+
+	// Clause: verifier != challenge (verifier is the pre-hash input).
+	if authState1.Verifier == challenge1 {
+		t.Error("Verifier == Challenge; they must differ (verifier is the pre-hash value)")
+	}
+
+	// Clause: verifier value does not appear anywhere in the redirect URL.
+	if strings.Contains(loc1, authState1.Verifier) {
+		t.Errorf("code_verifier value found in redirect URL: %q", loc1)
+	}
+
+	// Clause: auth-state cookie set and binds browser to the pending record.
+	if cookie1 == nil {
+		t.Fatal("auth_state cookie not set")
+	}
+	if !cookie1.HttpOnly {
+		t.Error("auth_state cookie: HttpOnly must be true")
+	}
+	if cookie1.SameSite < http.SameSiteLaxMode {
+		t.Errorf("auth_state cookie: SameSite = %v, want ≥ Lax", cookie1.SameSite)
+	}
+	if cookie1.Value != state1 {
+		t.Errorf("auth_state cookie value = %q, want state %q", cookie1.Value, state1)
+	}
+
+	// --- Second request (per-request freshness) ------------------------------
+
+	loc2, state2, _ := doRequest(t)
+
+	// Clause: each request produces a fresh verifier and state.
+	if state2 == state1 {
+		t.Error("state identical across two requests; PKCE must be per-request")
+	}
+	u2, _ := url.Parse(loc2)
+	challenge2 := u2.Query().Get("code_challenge")
+	if challenge2 == challenge1 {
+		t.Error("code_challenge identical across two requests; PKCE must be per-request")
+	}
 }
 
 // --- Hydra login challenge (apps/oauth-login) ------------------------------

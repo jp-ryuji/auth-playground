@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jp-ryuji/auth-playground/apps/api/internal/discovery"
+	"github.com/jp-ryuji/auth-playground/apps/api/internal/oidc"
 )
 
 // codeChallengeMethodS256 is the only PKCE transform SIGNUP-01 permits.
@@ -38,7 +38,7 @@ type AuthorizeParams struct {
 // client_id and redirect_uri are not named in SIGNUP-01 but are required
 // for the URL to be operationally meaningful; we validate them as a
 // sanity check, separately from the spec clauses.
-func BuildAuthorizeURL(doc *discovery.Document, p AuthorizeParams) (string, error) {
+func BuildAuthorizeURL(doc *oidc.Document, p AuthorizeParams) (string, error) {
 	if doc == nil {
 		return "", errors.New("signup: discovery document is nil")
 	}
