@@ -15,6 +15,7 @@ package signup_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -427,8 +428,140 @@ func TestSignup_SIGNUP_03_NonceBoundAndValidatedAtCallback(t *testing.T) {
 }
 
 func TestSignup_SIGNUP_04_PKCEVerifierStaysOnBFF(t *testing.T) {
-	pending(t, "SIGNUP-04",
-		"PKCE code_verifier MUST be per-request, stored only server-side on apps/api, MUST NOT leave the BFF")
+	const (
+		fakeAuthorizeEndpoint = "https://issuer.example/oauth2/auth"
+		clientID              = "test-rp"
+		redirectURI           = "http://127.0.0.1:8080/auth/callback"
+	)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/openid-configuration" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer":                           r.Host,
+			"authorization_endpoint":           fakeAuthorizeEndpoint,
+			"token_endpoint":                   "https://issuer.example/oauth2/token",
+			"jwks_uri":                         "https://issuer.example/.well-known/jwks.json",
+			"code_challenge_methods_supported": []string{"S256"},
+		})
+	}))
+	t.Cleanup(ts.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	doc, err := discovery.NewClient(ts.URL, ts.Client()).Fetch(ctx)
+	if err != nil {
+		t.Fatalf("discovery.Fetch: %v", err)
+	}
+
+	store := signup.NewStore(10 * time.Minute)
+	handler := &signup.LoginHandler{
+		Doc:         doc,
+		Store:       store,
+		ClientID:    clientID,
+		RedirectURI: redirectURI,
+		Scopes:      []string{"openid", "offline"},
+	}
+
+	doRequest := func(t *testing.T) (loc, state string, cookie *http.Cookie) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		// Clause: 302 redirect.
+		if rec.Code != http.StatusFound {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusFound)
+		}
+
+		loc = rec.Header().Get("Location")
+		u, err := url.Parse(loc)
+		if err != nil {
+			t.Fatalf("url.Parse(Location %q): %v", loc, err)
+		}
+		state = u.Query().Get("state")
+
+		for _, c := range rec.Result().Cookies() {
+			if c.Name == "auth_state" {
+				cookie = c
+				break
+			}
+		}
+		return loc, state, cookie
+	}
+
+	// --- First request -------------------------------------------------------
+
+	loc1, state1, cookie1 := doRequest(t)
+
+	u1, _ := url.Parse(loc1)
+	q1 := u1.Query()
+
+	// Clause: challenge is on the wire.
+	challenge1 := q1.Get("code_challenge")
+	if challenge1 == "" {
+		t.Fatal("code_challenge missing from redirect URL")
+	}
+
+	// Clause: code_verifier key is absent from the redirect URL.
+	if q1.Get("code_verifier") != "" {
+		t.Error("code_verifier key found in redirect URL; MUST NOT leave BFF")
+	}
+
+	// Retrieve the server-side record to inspect the verifier.
+	authState1, err := store.Consume(state1)
+	if err != nil {
+		t.Fatalf("store.Consume: %v", err)
+	}
+
+	// Clause: challenge matches S256(verifier).
+	sum := sha256.Sum256([]byte(authState1.Verifier))
+	expectedChallenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	if challenge1 != expectedChallenge {
+		t.Errorf("code_challenge = %q, want S256(verifier) = %q", challenge1, expectedChallenge)
+	}
+
+	// Clause: verifier != challenge (verifier is the pre-hash input).
+	if authState1.Verifier == challenge1 {
+		t.Error("Verifier == Challenge; they must differ (verifier is the pre-hash value)")
+	}
+
+	// Clause: verifier value does not appear anywhere in the redirect URL.
+	if strings.Contains(loc1, authState1.Verifier) {
+		t.Errorf("code_verifier value found in redirect URL: %q", loc1)
+	}
+
+	// Clause: auth-state cookie set and binds browser to the pending record.
+	if cookie1 == nil {
+		t.Fatal("auth_state cookie not set")
+	}
+	if !cookie1.HttpOnly {
+		t.Error("auth_state cookie: HttpOnly must be true")
+	}
+	if cookie1.SameSite < http.SameSiteLaxMode {
+		t.Errorf("auth_state cookie: SameSite = %v, want ≥ Lax", cookie1.SameSite)
+	}
+	if cookie1.Value != state1 {
+		t.Errorf("auth_state cookie value = %q, want state %q", cookie1.Value, state1)
+	}
+
+	// --- Second request (per-request freshness) ------------------------------
+
+	loc2, state2, _ := doRequest(t)
+
+	// Clause: each request produces a fresh verifier and state.
+	if state2 == state1 {
+		t.Error("state identical across two requests; PKCE must be per-request")
+	}
+	u2, _ := url.Parse(loc2)
+	challenge2 := u2.Query().Get("code_challenge")
+	if challenge2 == challenge1 {
+		t.Error("code_challenge identical across two requests; PKCE must be per-request")
+	}
 }
 
 // --- Hydra login challenge (apps/oauth-login) ------------------------------
