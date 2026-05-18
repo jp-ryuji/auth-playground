@@ -1,32 +1,36 @@
 package main
 
 import (
+	"context"
 	"log"
-	"net/http"
-	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	"github.com/jp-ryuji/auth-playground/apps/oauth-login/hydra"
-	"github.com/jp-ryuji/auth-playground/apps/oauth-login/login"
+	"github.com/jp-ryuji/auth-playground/apps/oauth-login/internal/config"
+	"github.com/jp-ryuji/auth-playground/apps/oauth-login/internal/server"
 )
 
 func main() {
-	adminURL := envOrDefault("HYDRA_ADMIN_URL", "http://127.0.0.1:4445")
-	port := envOrDefault("PORT", "8090")
+	cfg := config.Load()
 
-	mux := http.NewServeMux()
-	mux.Handle("GET /login", &login.Handler{
-		HydraAdmin: hydra.NewClient(adminURL, http.DefaultClient),
-	})
+	srv := server.New(server.Deps{Cfg: cfg})
+	errCh := srv.Start()
+	log.Printf("oauth-login listening on :%s", cfg.Port)
 
-	log.Printf("oauth-login listening on :%s", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
-		log.Fatalf("server: %v", err)
+	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
+	select {
+	case err := <-errCh:
+		log.Fatalf("server error: %v", err)
+	case <-sigCtx.Done():
+		log.Println("shutdown signal received")
 	}
-}
 
-func envOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("shutdown: %v", err)
 	}
-	return fallback
 }
