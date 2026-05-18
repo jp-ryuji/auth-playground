@@ -1,7 +1,7 @@
 # auth-playground developer entry points.
 # `make help` lists targets.
 
-.PHONY: help up down logs ps test test-signup test-signup-live discovery wait-hydra
+.PHONY: help up down logs ps test test-signup test-signup-live test-oauth-login discovery wait-hydra
 
 help:                ## Show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -18,11 +18,14 @@ logs:                ## Tail logs from the stack
 ps:                  ## Show stack status
 	docker compose ps
 
-test:                ## Run all Go tests in apps/api
-	cd apps/api && go test ./...
+test:                ## Run all Go tests across the workspace (api + oauth-login)
+	go test ./apps/api/... ./apps/oauth-login/...
 
 test-signup:         ## Run only the SIGNUP-NN suite (hermetic)
 	cd apps/api && go test -v ./internal/signup/...
+
+test-oauth-login:    ## Run only apps/oauth-login tests
+	cd apps/oauth-login && go test ./...
 
 test-signup-live:    ## Run SIGNUP-NN tests that talk to the live stack (requires `make up`)
 	cd apps/api && AUTH_PLAYGROUND_LIVE=1 go test -v -run LiveDiscovery ./internal/signup/...

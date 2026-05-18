@@ -29,6 +29,8 @@ import (
 
 	"github.com/jp-ryuji/auth-playground/apps/api/internal/oidc"
 	"github.com/jp-ryuji/auth-playground/apps/api/internal/signup"
+	"github.com/jp-ryuji/auth-playground/apps/oauth-login/hydra"
+	"github.com/jp-ryuji/auth-playground/apps/oauth-login/login"
 )
 
 const specHref = "docs/specs/10-flows/signup-first-login.md"
@@ -572,9 +574,95 @@ func TestSignup_SIGNUP_04_PKCEVerifierStaysOnBFF(t *testing.T) {
 // --- Hydra login challenge (apps/oauth-login) ------------------------------
 
 func TestSignup_SIGNUP_05_ResolveLoginChallengeViaHydraAdmin(t *testing.T) {
-	pending(t, "SIGNUP-05",
-		"apps/oauth-login MUST resolve login_challenge via Hydra Admin; "+
-			"MUST NOT trust query-string fields beyond the challenge id")
+	t.Parallel()
+
+	const wantChallengeID = "test-challenge-abc123"
+
+	// receivedChallenge captures the challenge ID the stub Hydra Admin received.
+	// Buffered size 1: stub goroutine never blocks if the test is slow to drain.
+	receivedChallenge := make(chan string, 1)
+
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/admin/oauth2/auth/requests/login" {
+			http.NotFound(w, r)
+			return
+		}
+		receivedChallenge <- r.URL.Query().Get("login_challenge")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"challenge":                       wantChallengeID,
+			"request_url":                     "https://hydra.example/oauth2/auth",
+			"requested_scope":                 []string{"openid", "offline"},
+			"requested_access_token_audience": []string{},
+			"skip":                            false,
+			"subject":                         "",
+		})
+	}))
+	t.Cleanup(stub.Close)
+
+	h := &login.Handler{HydraAdmin: hydra.NewClient(stub.URL, stub.Client())}
+
+	// Clause: handler calls Hydra Admin with the exact challenge ID.
+	t.Run("calls Hydra Admin with exact challenge ID", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest(http.MethodGet, "/login?login_challenge="+wantChallengeID, nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		select {
+		case got := <-receivedChallenge:
+			if got != wantChallengeID {
+				t.Errorf("Hydra Admin received challenge %q, want %q", got, wantChallengeID)
+			}
+		default:
+			t.Fatal("handler did not call Hydra Admin GET /admin/oauth2/auth/requests/login")
+		}
+
+		// Scaffold boundary: 501 after successful resolution (SIGNUP-06 adds the real redirect).
+		if rec.Code != http.StatusNotImplemented {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusNotImplemented)
+		}
+	})
+
+	// Clause: MUST NOT trust query-string fields beyond login_challenge.
+	t.Run("ignores query params beyond login_challenge", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest(http.MethodGet,
+			"/login?login_challenge="+wantChallengeID+"&evil=injected&subject=forged",
+			nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		select {
+		case got := <-receivedChallenge:
+			if got != wantChallengeID {
+				t.Errorf("Hydra Admin received challenge %q, want %q", got, wantChallengeID)
+			}
+		default:
+			t.Fatal("handler did not call Hydra Admin")
+		}
+	})
+
+	// Clause: missing login_challenge must be rejected before reaching Hydra Admin.
+	t.Run("missing login_challenge returns 400", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest(http.MethodGet, "/login", nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		select {
+		case <-receivedChallenge:
+			t.Error("Hydra Admin was called despite missing login_challenge")
+		default:
+		}
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+		}
+	})
 }
 
 func TestSignup_SIGNUP_06_RedirectToKratosWhenNoSession(t *testing.T) {
