@@ -1,0 +1,6 @@
+name: Security Audit
+on: [push, pull_request]
+
+jobs:
+  secret-scan:
+    uses: jp-ryuji/security-config/.github/workflows/trufflehog-base.yml@770894f0f4d2a57f3bd74f146de8b46d73ba34cd # main
