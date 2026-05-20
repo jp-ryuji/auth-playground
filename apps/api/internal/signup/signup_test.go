@@ -615,7 +615,6 @@ func TestSignup_SIGNUP_05_ResolveLoginChallengeViaHydraAdmin(t *testing.T) {
 
 	// Clause: handler calls Hydra Admin with the exact challenge ID.
 	t.Run("calls Hydra Admin with exact challenge ID", func(t *testing.T) {
-		t.Parallel()
 
 		req := httptest.NewRequest(http.MethodGet, "/login?login_challenge="+wantChallengeID, nil)
 		rec := httptest.NewRecorder()
@@ -638,7 +637,6 @@ func TestSignup_SIGNUP_05_ResolveLoginChallengeViaHydraAdmin(t *testing.T) {
 
 	// Clause: MUST NOT trust query-string fields beyond login_challenge.
 	t.Run("ignores query params beyond login_challenge", func(t *testing.T) {
-		t.Parallel()
 
 		req := httptest.NewRequest(http.MethodGet,
 			"/login?login_challenge="+wantChallengeID+"&evil=injected&subject=forged",
@@ -658,7 +656,6 @@ func TestSignup_SIGNUP_05_ResolveLoginChallengeViaHydraAdmin(t *testing.T) {
 
 	// Clause: missing login_challenge must be rejected before reaching Hydra Admin.
 	t.Run("missing login_challenge returns 400", func(t *testing.T) {
-		t.Parallel()
 
 		req := httptest.NewRequest(http.MethodGet, "/login", nil)
 		rec := httptest.NewRecorder()
