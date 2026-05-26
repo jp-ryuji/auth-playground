@@ -25,6 +25,24 @@ make help      # everything else
 
 `make` with no target prints the same listing. See [`docs/specs/`](./docs/specs) for the design contract the code is expected to satisfy.
 
+## Security
+
+### Pre-commit secret scanning (gitleaks)
+
+Install the pre-commit tool globally (once per machine):
+
+```bash
+pip install pre-commit
+```
+
+Then activate the hook inside this repo (once per clone):
+
+```bash
+pre-commit install
+```
+
+After that, gitleaks runs automatically before every commit and blocks any commit that contains secrets.
+
 ## Architecture
 
 ### Monorepo
