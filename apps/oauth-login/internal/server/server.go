@@ -21,11 +21,13 @@ type Server struct {
 
 func New(deps Deps) *Server {
 	mux := http.NewServeMux()
-	mux.Handle("GET /login", &login.Handler{
+	loginHandler := &login.Handler{
 		HydraAdmin:        hydra.NewClient(deps.Cfg.HydraAdminURL, http.DefaultClient),
 		KratosPublic:      kratos.NewClient(deps.Cfg.KratosPublicURL, http.DefaultClient),
 		OAuthLoginBaseURL: deps.Cfg.OAuthLoginBaseURL,
-	})
+	}
+	mux.Handle("GET /login", loginHandler)
+	mux.Handle("GET /login/resume", &login.ResumeHandler{Handler: *loginHandler})
 
 	return &Server{
 		httpServer: &http.Server{

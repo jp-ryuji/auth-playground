@@ -753,8 +753,105 @@ func TestSignup_SIGNUP_06_RedirectToKratosWhenNoSession(t *testing.T) {
 }
 
 func TestSignup_SIGNUP_07_AcceptLoginWithKratosIdentityAsSubject(t *testing.T) {
-	pending(t, "SIGNUP-07",
-		"on Kratos session, apps/oauth-login MUST accept the login with subject = Kratos identity id (OV-11)")
+	t.Parallel()
+
+	const challengeID = "challenge-signup07"
+	const identityID = "kratos-identity-abc123"
+	const redirectTo = "https://hydra.example/oauth2/auth/requests/consent?consent_challenge=consent123"
+	const sentCookie = "ory_kratos_session=active-session"
+
+	type acceptBody struct {
+		Subject string `json:"subject"`
+	}
+
+	receivedAccept := make(chan acceptBody, 1)
+
+	hydraStub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/admin/oauth2/auth/requests/login":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"challenge":                       challengeID,
+				"request_url":                     "https://hydra.example/oauth2/auth",
+				"requested_scope":                 []string{"openid"},
+				"requested_access_token_audience": []string{},
+				"skip":                            false,
+				"subject":                         "",
+			})
+		case r.Method == http.MethodPut && r.URL.Path == "/admin/oauth2/auth/requests/login/accept":
+			var body acceptBody
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			receivedAccept <- body
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"redirect_to": redirectTo,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(hydraStub.Close)
+
+	kratosStub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/sessions/whoami" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "session-id",
+			"identity": map[string]string{
+				"id": identityID,
+			},
+		})
+	}))
+	t.Cleanup(kratosStub.Close)
+
+	h := &login.Handler{
+		HydraAdmin:        hydra.NewClient(hydraStub.URL, hydraStub.Client()),
+		KratosPublic:      kratos.NewClient(kratosStub.URL, kratosStub.Client()),
+		OAuthLoginBaseURL: "http://oauth-login.example",
+	}
+	resume := &login.ResumeHandler{Handler: *h}
+
+	assertAcceptRedirect := func(t *testing.T, rec *httptest.ResponseRecorder) {
+		t.Helper()
+
+		if rec.Code != http.StatusFound {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusFound)
+		}
+		if got := rec.Header().Get("Location"); got != redirectTo {
+			t.Errorf("Location = %q, want %q", got, redirectTo)
+		}
+
+		select {
+		case body := <-receivedAccept:
+			if body.Subject != identityID {
+				t.Errorf("accept subject = %q, want %q", body.Subject, identityID)
+			}
+		default:
+			t.Fatal("Hydra Admin PUT /login/accept was not called")
+		}
+	}
+
+	t.Run("GET /login with Kratos session", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/login?login_challenge="+challengeID, nil)
+		req.Header.Set("Cookie", sentCookie)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		assertAcceptRedirect(t, rec)
+	})
+
+	t.Run("GET /login/resume with Kratos session", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/login/resume?login_challenge="+challengeID, nil)
+		req.Header.Set("Cookie", sentCookie)
+		rec := httptest.NewRecorder()
+		resume.ServeHTTP(rec, req)
+		assertAcceptRedirect(t, rec)
+	})
 }
 
 // --- Hydra consent challenge (apps/oauth-login) ----------------------------
