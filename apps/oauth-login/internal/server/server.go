@@ -7,6 +7,7 @@ import (
 
 	"github.com/jp-ryuji/auth-playground/apps/oauth-login/hydra"
 	"github.com/jp-ryuji/auth-playground/apps/oauth-login/internal/config"
+	"github.com/jp-ryuji/auth-playground/apps/oauth-login/kratos"
 	"github.com/jp-ryuji/auth-playground/apps/oauth-login/login"
 )
 
@@ -21,7 +22,9 @@ type Server struct {
 func New(deps Deps) *Server {
 	mux := http.NewServeMux()
 	mux.Handle("GET /login", &login.Handler{
-		HydraAdmin: hydra.NewClient(deps.Cfg.HydraAdminURL, http.DefaultClient),
+		HydraAdmin:        hydra.NewClient(deps.Cfg.HydraAdminURL, http.DefaultClient),
+		KratosPublic:      kratos.NewClient(deps.Cfg.KratosPublicURL, http.DefaultClient),
+		OAuthLoginBaseURL: deps.Cfg.OAuthLoginBaseURL,
 	})
 
 	return &Server{

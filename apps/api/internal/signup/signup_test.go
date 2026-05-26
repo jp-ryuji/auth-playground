@@ -30,6 +30,7 @@ import (
 	"github.com/jp-ryuji/auth-playground/apps/api/internal/oidc"
 	"github.com/jp-ryuji/auth-playground/apps/api/internal/signup"
 	"github.com/jp-ryuji/auth-playground/apps/oauth-login/hydra"
+	"github.com/jp-ryuji/auth-playground/apps/oauth-login/kratos"
 	"github.com/jp-ryuji/auth-playground/apps/oauth-login/login"
 )
 
@@ -582,7 +583,7 @@ func TestSignup_SIGNUP_05_ResolveLoginChallengeViaHydraAdmin(t *testing.T) {
 	// Buffered size 1: stub goroutine never blocks if the test is slow to drain.
 	receivedChallenge := make(chan string, 1)
 
-	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	hydraStub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/admin/oauth2/auth/requests/login" {
 			http.NotFound(w, r)
 			return
@@ -598,13 +599,22 @@ func TestSignup_SIGNUP_05_ResolveLoginChallengeViaHydraAdmin(t *testing.T) {
 			"subject":                         "",
 		})
 	}))
-	t.Cleanup(stub.Close)
+	t.Cleanup(hydraStub.Close)
 
-	h := &login.Handler{HydraAdmin: hydra.NewClient(stub.URL, stub.Client())}
+	// Kratos stub returns 401 (no session) so SIGNUP-06 redirect fires.
+	kratosStub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(kratosStub.Close)
+
+	h := &login.Handler{
+		HydraAdmin:        hydra.NewClient(hydraStub.URL, hydraStub.Client()),
+		KratosPublic:      kratos.NewClient(kratosStub.URL, kratosStub.Client()),
+		OAuthLoginBaseURL: "http://oauth-login.example",
+	}
 
 	// Clause: handler calls Hydra Admin with the exact challenge ID.
 	t.Run("calls Hydra Admin with exact challenge ID", func(t *testing.T) {
-		t.Parallel()
 
 		req := httptest.NewRequest(http.MethodGet, "/login?login_challenge="+wantChallengeID, nil)
 		rec := httptest.NewRecorder()
@@ -619,15 +629,14 @@ func TestSignup_SIGNUP_05_ResolveLoginChallengeViaHydraAdmin(t *testing.T) {
 			t.Fatal("handler did not call Hydra Admin GET /admin/oauth2/auth/requests/login")
 		}
 
-		// Scaffold boundary: 501 after successful resolution (SIGNUP-06 adds the real redirect).
-		if rec.Code != http.StatusNotImplemented {
-			t.Errorf("status = %d, want %d", rec.Code, http.StatusNotImplemented)
+		// SIGNUP-06 redirects to Kratos when no session exists.
+		if rec.Code != http.StatusFound {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusFound)
 		}
 	})
 
 	// Clause: MUST NOT trust query-string fields beyond login_challenge.
 	t.Run("ignores query params beyond login_challenge", func(t *testing.T) {
-		t.Parallel()
 
 		req := httptest.NewRequest(http.MethodGet,
 			"/login?login_challenge="+wantChallengeID+"&evil=injected&subject=forged",
@@ -647,7 +656,6 @@ func TestSignup_SIGNUP_05_ResolveLoginChallengeViaHydraAdmin(t *testing.T) {
 
 	// Clause: missing login_challenge must be rejected before reaching Hydra Admin.
 	t.Run("missing login_challenge returns 400", func(t *testing.T) {
-		t.Parallel()
 
 		req := httptest.NewRequest(http.MethodGet, "/login", nil)
 		rec := httptest.NewRecorder()
@@ -665,9 +673,83 @@ func TestSignup_SIGNUP_05_ResolveLoginChallengeViaHydraAdmin(t *testing.T) {
 	})
 }
 
+
 func TestSignup_SIGNUP_06_RedirectToKratosWhenNoSession(t *testing.T) {
-	pending(t, "SIGNUP-06",
-		"if no Kratos session exists, apps/oauth-login MUST redirect into a Kratos self-service flow")
+	t.Parallel()
+
+	const challengeID = "challenge-signup06"
+	const sentCookie = "ory_kratos_session=old-session-token"
+
+	receivedKratosCookie := make(chan string, 1)
+
+	hydraStub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"challenge":                       challengeID,
+			"request_url":                     "https://hydra.example/oauth2/auth",
+			"requested_scope":                 []string{"openid"},
+			"requested_access_token_audience": []string{},
+			"skip":                            false,
+			"subject":                         "",
+		})
+	}))
+	t.Cleanup(hydraStub.Close)
+
+	kratosStub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/sessions/whoami" {
+			receivedKratosCookie <- r.Header.Get("Cookie")
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(kratosStub.Close)
+
+	h := &login.Handler{
+		HydraAdmin:        hydra.NewClient(hydraStub.URL, hydraStub.Client()),
+		KratosPublic:      kratos.NewClient(kratosStub.URL, kratosStub.Client()),
+		OAuthLoginBaseURL: "http://oauth-login.example",
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/login?login_challenge="+challengeID, nil)
+	req.Header.Set("Cookie", sentCookie)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	// Clause: redirects to Kratos self-service registration browser flow.
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusFound)
+	}
+
+	loc := rec.Header().Get("Location")
+	if !strings.Contains(loc, "/self-service/registration/browser") {
+		t.Errorf("Location %q does not contain /self-service/registration/browser", loc)
+	}
+
+	parsed, err := url.Parse(loc)
+	if err != nil {
+		t.Fatalf("parse Location: %v", err)
+	}
+	returnTo, err := url.QueryUnescape(parsed.Query().Get("return_to"))
+	if err != nil {
+		t.Fatalf("unescape return_to: %v", err)
+	}
+	if !strings.Contains(returnTo, "/login/resume") {
+		t.Errorf("return_to %q does not contain /login/resume", returnTo)
+	}
+	if !strings.Contains(returnTo, "login_challenge="+challengeID) {
+		t.Errorf("return_to %q does not contain login_challenge=%s", returnTo, challengeID)
+	}
+
+	// Clause: browser's Cookie header is forwarded to Kratos whoami.
+	select {
+	case got := <-receivedKratosCookie:
+		if got != sentCookie {
+			t.Errorf("Kratos received Cookie %q, want %q", got, sentCookie)
+		}
+	default:
+		t.Error("Kratos /sessions/whoami was not called")
+	}
 }
 
 func TestSignup_SIGNUP_07_AcceptLoginWithKratosIdentityAsSubject(t *testing.T) {
