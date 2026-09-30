@@ -1,13 +1,28 @@
 # auth-playground developer entry points.
 # `make help` lists targets.
 
-.PHONY: help up down logs ps test test-signup test-signup-live test-oauth-login discovery wait-hydra
+.PHONY: help up down logs ps ready seed next prove test fmt-check vet test-signup test-signup-live test-oauth-login discovery wait-hydra
 
 help:                ## Show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 up:                  ## Start Hydra + Kratos + Postgres + SSUI + Mailpit
 	docker compose up -d
+
+ready:               ## Start the stack, wait for Hydra, register the three OAuth clients
+	docker compose up -d
+	$(MAKE) wait-hydra
+	bash scripts/seed-clients.sh
+
+seed:                ## Register the three dev Hydra clients (stack must already be up)
+	bash scripts/seed-clients.sh
+
+next:                ## Print the first pending signup requirement and its proof command
+	bash scripts/next-requirement.sh
+
+prove:               ## Fail unless PROVE_ID passes and is not skipped (make prove PROVE_ID=SIGNUP-08)
+	@test -n "$(PROVE_ID)" || { echo "usage: make prove PROVE_ID=SIGNUP-08" >&2; exit 1; }
+	bash scripts/prove-requirement.sh "$(PROVE_ID)"
 
 down:                ## Stop and remove containers (volumes preserved)
 	docker compose down
@@ -18,13 +33,24 @@ logs:                ## Tail logs from the stack
 ps:                  ## Show stack status
 	docker compose ps
 
-test:                ## Run all Go tests across the workspace (api + oauth-login)
+test: fmt-check vet    ## Run format check, go vet, and all Go tests
 	go test ./apps/api/... ./apps/oauth-login/...
+
+fmt-check:           ## Fail if gofmt would change files under apps/
+	@out=$$(gofmt -l apps); \
+	if [ -n "$$out" ]; then \
+		printf '%s\n' "$$out"; \
+		echo "run gofmt -w on the files above"; \
+		exit 1; \
+	fi
+
+vet:                 ## Run go vet on both modules
+	go vet ./apps/api/... ./apps/oauth-login/...
 
 test-signup:         ## Run only the SIGNUP-NN suite (hermetic)
 	cd apps/api && go test -v ./internal/signup/...
 
-test-oauth-login:    ## Run only apps/oauth-login tests
+test-oauth-login:    ## Compile apps/oauth-login (no test files there yet)
 	cd apps/oauth-login && go test ./...
 
 test-signup-live:    ## Run SIGNUP-NN tests that talk to the live stack (requires `make up`)

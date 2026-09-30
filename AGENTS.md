@@ -6,13 +6,18 @@ This file provides guidance to AI coding assistants (Claude Code, Copilot, Curso
 
 ```bash
 make up              # start full stack (Hydra, Kratos, Postgres, Self-Service UI, Mailpit)
+make ready           # start the stack and register the three dev OAuth clients
+make next            # print the first pending signup requirement
+make prove PROVE_ID=SIGNUP-08  # fail if that ID fails or is still skipped
 make down            # stop containers (volumes preserved)
-make test            # run all Go tests across the workspace
+make test            # gofmt check, go vet, and all Go tests
 make test-signup     # run only the SIGNUP-NN suite (hermetic, no stack required)
-make test-oauth-login # run only apps/oauth-login tests
+make test-oauth-login # compile apps/oauth-login (no test files there yet)
 make test-signup-live # run live tests against the running stack (requires make up)
 make discovery       # curl Hydra's .well-known/openid-configuration
 ```
+
+`make test` stays green while later signup tests call `pending()` (`t.Skip`). That does not mean the signup flow is done. `make prove PROVE_ID=...` is the stop command for one requirement.
 
 To run a single test:
 ```bash
@@ -65,7 +70,17 @@ Where `docs/specs/` and `README.md` disagree, the spec wins.
 2. **M2M** — `client_credentials` for outbound server-to-server calls
 3. **Token exchange** — RFC 8693 for downstream-audience tokens
 
-Never mix tokens or credentials across these three registrations.
+Never mix tokens or credentials across these three registrations. `make ready` registers them as `auth-playground-rp`, `auth-playground-m2m`, and `auth-playground-exchange`. Dev secrets live in `.env.example`.
+
+## Loop
+
+The implementation loop takes one requirement ID per run.
+
+- `make next` prints the ID, the spec, and the proof command.
+- `docs/loops/state.md` is the bookmark. Specs stay the contract. If they disagree, trust `make next` and fix the state file.
+- Skills: `.cursor/skills/implement-next-requirement/` and `.cursor/skills/review-requirement/`.
+- Parallel agents use separate git worktrees. One requirement per branch.
+- Live commands (`make ready`, `make test-signup-live`) need Docker. `make prove` for the current signup IDs does not.
 
 ## Security
 
