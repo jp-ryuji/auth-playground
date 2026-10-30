@@ -1,0 +1,9 @@
+title = "auth-playground"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Local Hydra placeholders from scripts/seed-clients.sh and .env.example"
+regexTarget = "line"
+regexes = ['''dev-only-[A-Za-z0-9-]+''']
