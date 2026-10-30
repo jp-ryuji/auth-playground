@@ -36,8 +36,10 @@ import (
 
 const specHref = "docs/specs/10-flows/signup-first-login.md"
 
-// pending fails-soft so the suite stays green while the scaffold is in place.
-// Swap to t.Fatalf once you start implementing the corresponding requirement.
+// pending fails-soft so the suite stays green while later IDs are unimplemented.
+// Do not change it to t.Fatalf. To implement an ID, replace that test's
+// pending() call with real assertions; `make prove PROVE_ID=...` fails while
+// the call remains.
 func pending(t *testing.T, id, quote string) {
 	t.Helper()
 	t.Skipf("not implemented: %s — %q (see %s#%s)", id, quote, specHref, lower(id))

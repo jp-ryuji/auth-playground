@@ -11,8 +11,7 @@ up:                  ## Start Hydra + Kratos + Postgres + SSUI + Mailpit
 
 ready:               ## Start the stack, wait for Hydra, register the three OAuth clients
 	docker compose up -d
-	$(MAKE) wait-hydra
-	bash scripts/seed-clients.sh
+	bash scripts/seed-clients.sh  # waits up to 60s for Hydra Admin /health/ready
 
 seed:                ## Register the three dev Hydra clients (stack must already be up)
 	bash scripts/seed-clients.sh

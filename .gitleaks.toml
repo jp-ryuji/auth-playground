@@ -5,5 +5,8 @@ useDefault = true
 
 [allowlist]
 description = "Local Hydra placeholders from scripts/seed-clients.sh and .env.example"
-regexTarget = "line"
-regexes = ['''dev-only-[A-Za-z0-9-]+''']
+# Match only the secret itself, and only in the files that hold the placeholders,
+# so a real secret on a line that mentions a placeholder is still reported.
+regexTarget = "match"
+regexes = ['''^dev-only-[A-Za-z0-9-]+$''']
+paths = ['''^\.env\.example$''', '''^scripts/seed-clients\.sh$''']
