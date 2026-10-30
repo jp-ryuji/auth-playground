@@ -67,6 +67,10 @@ Where `docs/specs/` and `README.md` disagree, the spec wins.
 
 Never mix tokens or credentials across these three registrations.
 
+## Testing
+
+Whenever you change behaviour, write all the tests it needs in the same change, without being asked. Cover the happy path, error paths, input validation, escaping and leak checks, and edge cases. If something can't be tested, say why in your summary.
+
 ## Security
 
 ### Pre-commit secret scanning
