@@ -2,7 +2,7 @@
 
 IAM-style authentication and authorization experiments for production-like SaaS identity stacks.
 
-This README describes the **intended architecture and behavior** as the repository grows; treat it as the design reference for components and flows below.
+This README is the overview. The design contract is [`docs/specs/`](./docs/specs). Where this file and a spec disagree, the spec wins. The bookmark for the implementation loop is [`docs/loops/state.md`](./docs/loops/state.md).
 
 ## Overview
 
@@ -18,8 +18,11 @@ This README describes the **intended architecture and behavior** as the reposito
 ## Local development
 
 ```bash
-make up        # start the OIDC stack (Hydra, Kratos, Postgres, SSUI, Mailslurper)
-make test      # run the SIGNUP-NN suite in apps/api
+make up        # start the OIDC stack (Hydra, Kratos, Postgres, SSUI, Mailpit)
+make ready     # start the stack and register the three dev OAuth clients
+make next      # print the next pending requirement and its proof command
+make prove PROVE_ID=SIGNUP-08  # fail if that requirement is skipped or failing
+make test      # format check, go vet, and all Go tests
 make help      # everything else
 ```
 
@@ -183,14 +186,14 @@ sequenceDiagram
 apps/
   web/           # Next.js: thin client (planned)
   api/           # Go: RP + BFF + RS; RFC 8693 token exchange
-  oauth-login/   # Go: Hydra login/consent orchestration (planned)
+  oauth-login/   # Go: Hydra login/consent orchestration
 docker/
   hydra/         # Hydra config
   kratos/        # Kratos config, identity schema, courier templates
   postgres/      # Postgres init script
 docs/
   specs/         # Design contract: architecture, flows, cross-cutting
-compose.yaml     # Local stack: Postgres, Hydra, Kratos, Self-Service UI, Mailslurper
+compose.yaml     # Local stack: Postgres, Hydra, Kratos, Self-Service UI, Mailpit
 Makefile         # Developer entry points (make help)
 ```
 

@@ -5,8 +5,8 @@ package signup_test
 // Conventions:
 //   - One Test function per requirement ID (SIGNUP-01..14).
 //   - Function name embeds the ID: TestSignup_SIGNUP_NN_<slug>.
-//   - Each test currently calls t.Skip with a short quote of the spec text;
-//     implementing the package means replacing each Skip with real assertions.
+//   - SIGNUP-01..07 assert real behavior. Later IDs call pending() (t.Skip)
+//     until that ID is implemented. `make next` prints the first pending ID.
 //   - Acceptance-criteria style scenarios live at the bottom under
 //     TestSignup_Acceptance_* and reference the IDs they exercise.
 //
@@ -79,11 +79,11 @@ func TestSignup_SIGNUP_01_AuthorizeURLBuiltFromDiscovery(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"issuer":                                r.Host, // unused by this test
-			"authorization_endpoint":                fakeAuthorizeEndpoint,
-			"token_endpoint":                        "https://issuer.example/oauth2/token",
-			"jwks_uri":                              "https://issuer.example/.well-known/jwks.json",
-			"code_challenge_methods_supported":      []string{"S256"},
+			"issuer":                           r.Host, // unused by this test
+			"authorization_endpoint":           fakeAuthorizeEndpoint,
+			"token_endpoint":                   "https://issuer.example/oauth2/token",
+			"jwks_uri":                         "https://issuer.example/.well-known/jwks.json",
+			"code_challenge_methods_supported": []string{"S256"},
 		})
 	}))
 	t.Cleanup(ts.Close)
@@ -212,15 +212,15 @@ func TestSignup_SIGNUP_01_BuildAuthorizeURL_Invalid(t *testing.T) {
 		doc *oidc.Document
 		mut func(*signup.AuthorizeParams)
 	}{
-		"nil doc":                       {nil, func(*signup.AuthorizeParams) {}},
-		"empty authorization_endpoint":  {&oidc.Document{}, func(*signup.AuthorizeParams) {}},
-		"missing client_id":             {goodDoc, func(p *signup.AuthorizeParams) { p.ClientID = "" }},
-		"missing redirect_uri":          {goodDoc, func(p *signup.AuthorizeParams) { p.RedirectURI = "" }},
-		"nil scopes":                    {goodDoc, func(p *signup.AuthorizeParams) { p.Scopes = nil }},
-		"scopes without openid":         {goodDoc, func(p *signup.AuthorizeParams) { p.Scopes = []string{"profile"} }},
-		"missing state":                 {goodDoc, func(p *signup.AuthorizeParams) { p.State = "" }},
-		"missing nonce":                 {goodDoc, func(p *signup.AuthorizeParams) { p.Nonce = "" }},
-		"missing code_challenge":        {goodDoc, func(p *signup.AuthorizeParams) { p.CodeChallenge = "" }},
+		"nil doc":                      {nil, func(*signup.AuthorizeParams) {}},
+		"empty authorization_endpoint": {&oidc.Document{}, func(*signup.AuthorizeParams) {}},
+		"missing client_id":            {goodDoc, func(p *signup.AuthorizeParams) { p.ClientID = "" }},
+		"missing redirect_uri":         {goodDoc, func(p *signup.AuthorizeParams) { p.RedirectURI = "" }},
+		"nil scopes":                   {goodDoc, func(p *signup.AuthorizeParams) { p.Scopes = nil }},
+		"scopes without openid":        {goodDoc, func(p *signup.AuthorizeParams) { p.Scopes = []string{"profile"} }},
+		"missing state":                {goodDoc, func(p *signup.AuthorizeParams) { p.State = "" }},
+		"missing nonce":                {goodDoc, func(p *signup.AuthorizeParams) { p.Nonce = "" }},
+		"missing code_challenge":       {goodDoc, func(p *signup.AuthorizeParams) { p.CodeChallenge = "" }},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -673,7 +673,6 @@ func TestSignup_SIGNUP_05_ResolveLoginChallengeViaHydraAdmin(t *testing.T) {
 	})
 }
 
-
 func TestSignup_SIGNUP_06_RedirectToKratosWhenNoSession(t *testing.T) {
 	t.Parallel()
 
@@ -903,35 +902,35 @@ func TestSignup_SIGNUP_14_OpaqueSessionCookie(t *testing.T) {
 // compose multiple SIGNUP-NN requirements; the comment on each names the IDs
 // the scenario exercises. Implement after the unit-level tests above pass.
 
-func TestSignup_Acceptance_HappyPath(t *testing.T) {
+func TestSignup_Acceptance_HappyPath(t *testing.T) { // req ACCEPT-HAPPY
 	// Exercises SIGNUP-01..11 end-to-end via headless browser / HTTP client.
 	pending(t, "ACCEPT-HAPPY",
 		"signed-out user → Hydra → oauth-login → SSUI → oauth-login → Hydra → apps/api/callback → signed in")
 }
 
-func TestSignup_Acceptance_TamperedStateRejected(t *testing.T) {
+func TestSignup_Acceptance_TamperedStateRejected(t *testing.T) { // req ACCEPT-STATE
 	pending(t, "ACCEPT-STATE", "tampering with state at callback rejects and leaves no session cookie (SIGNUP-10)")
 }
 
-func TestSignup_Acceptance_CodeReplayRejected(t *testing.T) {
+func TestSignup_Acceptance_CodeReplayRejected(t *testing.T) { // req ACCEPT-REPLAY
 	pending(t, "ACCEPT-REPLAY", "replaying a captured code after first exchange is rejected by Hydra (SIGNUP-11)")
 }
 
-func TestSignup_Acceptance_BadIDTokenRejected(t *testing.T) {
+func TestSignup_Acceptance_BadIDTokenRejected(t *testing.T) { // req ACCEPT-IDT
 	pending(t, "ACCEPT-IDT",
 		"ID token with mismatched nonce, missing aud, or expired exp is rejected before session is created (SIGNUP-12)")
 }
 
-func TestSignup_Acceptance_NoTokensInBrowser(t *testing.T) {
+func TestSignup_Acceptance_NoTokensInBrowser(t *testing.T) { // req ACCEPT-TOK
 	pending(t, "ACCEPT-TOK",
 		"no Hydra tokens in cookies, local storage, or page state at end of flow (OV-08, SIGNUP-13, SIGNUP-14)")
 }
 
-func TestSignup_Acceptance_SubClaimEqualsKratosIdentityID(t *testing.T) {
+func TestSignup_Acceptance_SubClaimEqualsKratosIdentityID(t *testing.T) { // req ACCEPT-SUB
 	pending(t, "ACCEPT-SUB", "OIDC sub claim equals the Kratos identity id of the registered user (OV-11, SIGNUP-07)")
 }
 
-func TestSignup_Acceptance_AdminResponseNotLeakedToBrowser(t *testing.T) {
+func TestSignup_Acceptance_AdminResponseNotLeakedToBrowser(t *testing.T) { // req ACCEPT-LEAK
 	pending(t, "ACCEPT-LEAK",
 		"apps/oauth-login does not echo Hydra Admin response fields beyond redirect_to (SIGNUP-05, SIGNUP-08)")
 }

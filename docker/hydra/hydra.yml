@@ -6,7 +6,7 @@
 #     {issuer}/.well-known/openid-configuration (OV-01, SIGNUP-01).
 #   - login/consent URLs point at apps/oauth-login on host port 3000.
 #   - Three OAuth clients (interactive, M2M, exchange) are registered out of band
-#     via Hydra Admin once the stack is up — see scripts/seed-clients.sh (TODO).
+#     via Hydra Admin once the stack is up — see scripts/seed-clients.sh (`make ready`).
 
 serve:
   cookies:
