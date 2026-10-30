@@ -82,6 +82,10 @@ The implementation loop takes one requirement ID per run.
 - Parallel agents use separate git worktrees. One requirement per branch.
 - Live commands (`make ready`, `make test-signup-live`) need Docker. `make prove` for the current signup IDs does not.
 
+## Testing
+
+Whenever you change behaviour, write all the tests it needs in the same change, without being asked. Cover the happy path, error paths, input validation, escaping and leak checks, and edge cases. If something can't be tested, say why in your summary.
+
 ## Security
 
 ### Pre-commit secret scanning
