@@ -38,7 +38,7 @@ clients = [
         "client_name": "auth-playground M2M",
         "client_secret": os.environ["OAUTH_M2M_SECRET"],
         "grant_types": ["client_credentials"],
-        "response_types": ["token"],
+        "response_types": [],
         "scope": "m2m",
         "token_endpoint_auth_method": "client_secret_basic",
     },
@@ -47,7 +47,7 @@ clients = [
         "client_name": "auth-playground token exchange",
         "client_secret": os.environ["OAUTH_EXCHANGE_SECRET"],
         "grant_types": ["urn:ietf:params:oauth:grant-type:token-exchange"],
-        "response_types": ["token"],
+        "response_types": [],
         "scope": "exchange",
         "token_endpoint_auth_method": "client_secret_basic",
     },
@@ -92,6 +92,12 @@ for client in clients:
     status, body = call(method, path, client)
     if status not in (200, 201):
         sys.exit(f"{method} {cid} failed: HTTP {status} {body}")
+    try:
+        got = json.loads(body).get("client_id")
+    except ValueError:
+        got = None
+    if got != cid:
+        sys.exit(f"{method} {cid}: Hydra returned client_id {got!r}; apps/api expects {cid!r}")
     grants = ",".join(client["grant_types"])
     print(f"registered {cid} ({grants})")
 PY

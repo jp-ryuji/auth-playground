@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
-# Print the first pending signup requirement. Exit 0 in every case.
+# Print the first pending signup requirement. Exit 0 whether or not one is
+# pending; exit 1 only when the signup test file is missing.
 # "NEXT none" means the signup suite has no pending() calls left.
 set -euo pipefail
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 file="$root/apps/api/internal/signup/signup_test.go"
 
+if [ ! -f "$file" ]; then
+  echo "signup test file not found: $file" >&2
+  exit 1
+fi
+
 parsed=$(awk '
   /^func Test/ {
     name = $2
     sub(/\(.*/, "", name)
   }
+  # Ignore comment lines so a note quoting pending(t, "...") is not counted.
+  /^[ \t]*\/\// { next }
   /pending\(t, "/ && !found {
     found = 1
     line = $0
